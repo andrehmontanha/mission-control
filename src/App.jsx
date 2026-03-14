@@ -671,10 +671,115 @@ function DateColSelector({dateCols,selected,onChange,th}){
   if(!dateCols?.length)return null;
   return<div style={{display:"flex",gap:3,alignItems:"center"}}>
     <Clock size={10} color={th.textDim}/>
+    <span style={{fontSize:8,color:th.textDim,fontWeight:600}}>Coluna de data</span>
     <select value={selected||""} onChange={e=>onChange(e.target.value)}
       style={{padding:"3px 6px",borderRadius:6,border:`1px solid ${th.border}`,background:th.card,color:th.textMid,fontSize:9,outline:"none",cursor:"pointer",fontFamily:NUM}}>
       {dateCols.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}
     </select>
+  </div>;
+}
+
+// ═══ CUSTOM WIDGET BUILDER ═══
+const WIDGET_KEY="mc_widgets_v1";
+const widgetsSave=w=>{try{localStorage.setItem(WIDGET_KEY,JSON.stringify(w))}catch(e){}};
+const widgetsLoad=()=>{try{const s=localStorage.getItem(WIDGET_KEY);return s?JSON.parse(s):[]}catch(e){return[]}};
+
+function WidgetBuilder({widgets,setWidgets,columns,allData,th}){
+  const[adding,setAdding]=useState(false);
+  const[draft,setDraft]=useState({name:"",type:"kpi",chartType:"bar",groupCol:"",valueCol:"",operation:"SUM",filters:[],color:PAL[0]});
+  const sel={padding:"4px 8px",borderRadius:6,border:`1px solid ${th.border}`,background:th.inputBg,color:th.text,fontSize:11,outline:"none",cursor:"pointer",fontFamily:NUM,width:"100%"};
+  const numCols=columns?.filter(c=>{const v=(allData||[]).slice(0,30).map(r=>r[c]).filter(Boolean);return v.filter(x=>!isNaN(Number(x))||String(x).match(/[\d,.]/)).length>v.length*.3;})||[];
+  const filterVals=(col)=>col?[...new Set((allData||[]).map(r=>String(r[col]||"").trim()).filter(Boolean))].sort():[];
+
+  const save=()=>{const w={...draft,id:`w${Date.now()}`};const nw=[...widgets,w];setWidgets(nw);widgetsSave(nw);setAdding(false);
+    setDraft({name:"",type:"kpi",chartType:"bar",groupCol:"",valueCol:"",operation:"SUM",filters:[],color:PAL[widgets.length%8]});};
+  const remove=id=>{const nw=widgets.filter(w=>w.id!==id);setWidgets(nw);widgetsSave(nw);};
+
+  return<div style={{marginTop:12}}>
+    {/* Render existing custom widgets */}
+    {widgets.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
+      {widgets.map(w=>{
+        // Compute widget data
+        let wData=allData||[];
+        (w.filters||[]).forEach(f=>{if(f.col&&f.val)wData=wData.filter(r=>String(r[f.col]||"").trim().toUpperCase()===f.val.toUpperCase());});
+        if(w.type==="kpi"){
+          const vals=wData.map(r=>parseBRL(r[w.valueCol])).filter(v=>!isNaN(v));
+          const val=w.operation==="COUNT"?wData.length:w.operation==="AVG"?(vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0):vals.reduce((a,b)=>a+b,0);
+          return<div key={w.id} style={{flex:"1 1 180px",minWidth:160,background:th.card,borderRadius:16,padding:"18px 16px",border:`1px solid ${th.border}`,position:"relative"}}>
+            <button onClick={()=>remove(w.id)} style={{position:"absolute",top:6,right:8,background:"transparent",border:"none",cursor:"pointer",color:th.textDim,fontSize:10}}>✕</button>
+            <div style={{position:"absolute",top:0,left:0,width:4,height:"100%",background:w.color,borderRadius:"16px 0 0 16px"}}/>
+            <div style={{fontSize:11,color:th.textMid,fontWeight:500,marginBottom:8,paddingLeft:6}}>{w.name||"Widget"}</div>
+            <div style={{fontSize:24,fontWeight:700,color:th.text,fontFamily:NUM,paddingLeft:6}}>{w.operation==="COUNT"?fmtN(val):fmtBRL(val)}</div>
+            {w.filters?.length>0&&<div style={{fontSize:8,color:th.textDim,marginTop:4,paddingLeft:6}}>{w.filters.map(f=>`${f.col?.replace(/:/g,"")}=${f.val}`).join(", ")}</div>}
+          </div>;
+        } else {
+          // Chart widget
+          const g={};wData.forEach(r=>{const k=String(r[w.groupCol]||"").trim();if(!k||k==="-")return;
+            if(!g[k])g[k]=0;if(w.operation==="COUNT")g[k]+=1;else g[k]+=parseBRL(r[w.valueCol]);});
+          const chartData=Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([name,valor])=>({name,valor,value:valor}));
+          return<SmartChartBox key={w.id} id={w.id} title={w.name||"Widget"} icon={BarChart3} color={w.color} data={chartData}
+            allData={allData} columns={columns} defaultType={w.chartType} focused={null} onFocus={()=>{}} th={th} chartH={200}>
+            <button onClick={()=>remove(w.id)} style={{position:"absolute",top:6,right:8,background:"transparent",border:"none",cursor:"pointer",color:th.textDim,fontSize:10,zIndex:5}}>✕</button>
+          </SmartChartBox>;
+        }
+      })}
+    </div>}
+
+    {/* Add button / form */}
+    {!adding?<button onClick={()=>setAdding(true)} style={{padding:"8px 16px",borderRadius:10,border:`2px dashed ${th.primary}44`,background:th.bg,cursor:"pointer",color:th.primary,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:6,width:"100%",justifyContent:"center"}}>
+      <Plus size={14}/> Criar Widget (Card ou Gráfico)</button>
+    :<div style={{background:th.card,borderRadius:16,padding:18,border:`2px solid ${th.primary}33`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <h3 style={{fontSize:14,fontWeight:700,color:th.text}}>Novo Widget</h3>
+        <button onClick={()=>setAdding(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:th.textDim}}><X size={14}/></button></div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+        <div style={{flex:"1 1 150px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Nome</label>
+          <input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Ex: Total Cancelados" style={sel}/></div>
+        <div style={{flex:"0 0 120px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Formato</label>
+          <select value={draft.type} onChange={e=>setDraft({...draft,type:e.target.value})} style={sel}>
+            <option value="kpi">Card (valor único)</option><option value="chart">Gráfico</option></select></div>
+        {draft.type==="chart"&&<div style={{flex:"0 0 120px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Tipo de gráfico</label>
+          <select value={draft.chartType} onChange={e=>setDraft({...draft,chartType:e.target.value})} style={sel}>
+            {CHART_TYPES.map(t=><option key={t} value={t}>{CHART_TYPE_LABELS[t]}</option>)}</select></div>}
+        {draft.type==="chart"&&<div style={{flex:"1 1 120px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Agrupar por</label>
+          <select value={draft.groupCol} onChange={e=>setDraft({...draft,groupCol:e.target.value})} style={sel}>
+            <option value="">Selecione...</option>{columns.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}</select></div>}
+        <div style={{flex:"1 1 120px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Coluna de valor</label>
+          <select value={draft.valueCol} onChange={e=>setDraft({...draft,valueCol:e.target.value})} style={sel}>
+            <option value="">Selecione...</option>{numCols.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}</select></div>
+        <div style={{flex:"0 0 100px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Operação</label>
+          <select value={draft.operation} onChange={e=>setDraft({...draft,operation:e.target.value})} style={sel}>
+            <option value="SUM">Soma</option><option value="COUNT">Contagem</option><option value="AVG">Média</option></select></div>
+        <div style={{flex:"0 0 60px"}}>
+          <label style={{fontSize:9,color:th.textDim,fontWeight:600,display:"block",marginBottom:3}}>Cor</label>
+          <input type="color" value={draft.color} onChange={e=>setDraft({...draft,color:e.target.value})} style={{width:"100%",height:30,borderRadius:6,border:`1px solid ${th.border}`,cursor:"pointer"}}/></div>
+      </div>
+      {/* Filters */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontSize:10,color:th.textMid,fontWeight:600}}>Filtros</span>
+          <button onClick={()=>setDraft({...draft,filters:[...draft.filters,{col:"",val:""}]})} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${th.primary}44`,background:`${th.primary}08`,color:th.primary,fontSize:9,cursor:"pointer",fontWeight:600}}>+ Filtro</button>
+        </div>
+        {draft.filters.map((f,i)=><div key={i} style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
+          <select value={f.col} onChange={e=>{const fs=[...draft.filters];fs[i]={...fs[i],col:e.target.value,val:""};setDraft({...draft,filters:fs});}} style={{...sel,flex:1}}>
+            <option value="">Coluna</option>{columns.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}</select>
+          <span style={{color:th.textDim,fontSize:10}}>=</span>
+          <select value={f.val} onChange={e=>{const fs=[...draft.filters];fs[i]={...fs[i],val:e.target.value};setDraft({...draft,filters:fs});}} style={{...sel,flex:1}}>
+            <option value="">Valor</option>{filterVals(f.col).map(v=><option key={v} value={v}>{v}</option>)}</select>
+          <button onClick={()=>setDraft({...draft,filters:draft.filters.filter((_,j)=>j!==i)})} style={{background:"transparent",border:"none",cursor:"pointer",color:th.danger,fontSize:12}}>✕</button>
+        </div>)}
+      </div>
+      <button onClick={save} disabled={!draft.valueCol} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",
+        background:draft.valueCol?`linear-gradient(135deg,${th.primary},${th.teal})`:th.border,color:draft.valueCol?"#fff":th.textDim,
+        fontSize:13,fontWeight:700,cursor:draft.valueCol?"pointer":"not-allowed",fontFamily:FONT}}>
+        <Plus size={14}/> Criar Widget</button>
+    </div>}
   </div>;
 }
 
@@ -801,7 +906,7 @@ function Setup({teams,setTeams,goals,setGoals,metrics,setMetrics,columns,onStart
 }
 
 // ═══ TEAM VIEW ═══
-function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,trans,layout,photos,th,presMode,fsConfig,fsPrimary,onExitPres,vendorGoals,setVendorGoals,columns}){
+function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,trans,layout,photos,th,presMode,fsConfig,fsPrimary,onExitPres,vendorGoals,setVendorGoals,columns,customWidgets,setCustomWidgets}){
   const[fCol,setFCol]=useState(""),[fVal,setFVal]=useState("");
   const[selectedDateCol,setSelectedDateCol]=useState("");
   // Detect ALL date columns
@@ -836,28 +941,28 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
   const textCols=useMemo(()=>{if(!data?.[0])return[];return Object.keys(data[0]).filter(c=>{const v=data.slice(0,50).map(r=>r[c]).filter(Boolean);return v.filter(x=>typeof x==="number"||(!isNaN(Number(x))&&x!=="")).length<v.length*.4&&v.length>0;});},[data]);
   const fVals=useMemo(()=>fCol?[...new Set(dateFiltered.map(r=>String(r[fCol]||"").trim()).filter(Boolean))].sort():[],[dateFiltered,fCol]);
 
-  // ═══ ALL COMPUTATIONS USE `filtered` ═══
+  // ═══ ALL COMPUTATIONS USE `filtered` — NO hardcoded status ═══
   const computed=useMemo(()=>metrics.map(m=>({...m,value:evalMetric(filtered,m)})),[filtered,metrics]);
 
   const buildRanking=useCallback((sourceData)=>{
     if(!vendorCol||!sourceData?.length)return[];const g={};
-    sourceData.forEach(r=>{if(getSt(r)!=="FINALIZADO")return;const n=String(r[vendorCol]||"").trim();if(!n||n==="-")return;
+    sourceData.forEach(r=>{const n=String(r[vendorCol]||"").trim();if(!n||n==="-")return;
       if(!g[n])g[n]={t:0,c:0,v:0};g[n].t+=getV(r);g[n].c+=1;g[n].v+=Number(r[vidasCol]||0)||0;});
     return Object.entries(g).map(([n,d])=>({name:n,total:d.t,count:d.c,vidas:d.v})).sort((a,b)=>b.total-a.total);
-  },[vendorCol,vidasCol,getSt,getV]);
+  },[vendorCol,vidasCol,getV]);
 
   const ranking=useMemo(()=>buildRanking(filtered),[filtered,buildRanking]);
 
   const byPlano=useMemo(()=>{if(!planoCol||!filtered?.length)return[];const g={};
-    filtered.forEach(r=>{if(getSt(r)!=="FINALIZADO")return;g[String(r[planoCol]||"?").trim()]=(g[String(r[planoCol]||"?").trim()]||0)+getV(r);});
-    return Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,v])=>({name:n,valor:v}));},[filtered,planoCol,getSt,getV]);
+    filtered.forEach(r=>{g[String(r[planoCol]||"?").trim()]=(g[String(r[planoCol]||"?").trim()]||0)+getV(r);});
+    return Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,v])=>({name:n,valor:v}));},[filtered,planoCol,getV]);
   const monthly=useMemo(()=>{if(!filtered?.length)return[];const g={};
-    filtered.forEach(r=>{if(getSt(r)!=="FINALIZADO")return;const d=dateCol?parseDate(r[dateCol]):null;if(!d)return;
+    filtered.forEach(r=>{const d=dateCol?parseDate(r[dateCol]):null;if(!d)return;
       const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;g[k]=(g[k]||0)+getV(r);});
-    return Object.entries(g).sort().slice(-12).map(([k,v])=>({name:k.split("-").reverse().join("/"),valor:v}));},[filtered,dateCol,getSt,getV]);
+    return Object.entries(g).sort().slice(-12).map(([k,v])=>({name:k.split("-").reverse().join("/"),valor:v}));},[filtered,dateCol,getV]);
   const byOrigem=useMemo(()=>{if(!origemCol||!filtered?.length)return[];const g={};
-    filtered.forEach(r=>{if(getSt(r)!=="FINALIZADO")return;const k=String(r[origemCol]||"").trim();if(!k||k==="-")return;g[k]=(g[k]||0)+1;});
-    return Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,v])=>({name:n,value:v}));},[filtered,origemCol,getSt]);
+    filtered.forEach(r=>{const k=String(r[origemCol]||"").trim();if(!k||k==="-")return;g[k]=(g[k]||0)+1;});
+    return Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,v])=>({name:n,value:v}));},[filtered,origemCol]);
 
   // ─── NEW CHART 1: Status Pipeline (stacked horizontal) ───
   const statusPipeline=useMemo(()=>{if(!statusCol||!filtered?.length)return[];const g={};
@@ -929,7 +1034,7 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
     const topVendors=ranking.slice(0,5).map(r=>r.name);
     const topPlanos=[...new Set(filtered.map(r=>String(r[planoCol]||"").trim()).filter(Boolean))].slice(0,6);
     const g={};topPlanos.forEach(p=>{const row={name:p.length>15?p.slice(0,15)+"…":p};topVendors.forEach(v=>{row[v.split(" ")[0]]=0;});g[p]=row;});
-    filtered.forEach(r=>{if(getSt(r)!=="FINALIZADO")return;const v=String(r[vendorCol]||"").trim(),p=String(r[planoCol]||"").trim();
+    filtered.forEach(r=>{const v=String(r[vendorCol]||"").trim(),p=String(r[planoCol]||"").trim();
       if(topVendors.includes(v)&&g[p])g[p][v.split(" ")[0]]+=getV(r);});
     return{data:Object.values(g),keys:topVendors.map(v=>v.split(" ")[0])};
   },[filtered,vendorCol,planoCol,ranking,getSt,getV]);
@@ -1217,6 +1322,9 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
       <VendorGoalsEditor vendorGoals={vendorGoals} setVendorGoals={setVendorGoals} ranking={ranking} th={th}/>
       <DateColSelector dateCols={allDateCols} selected={selectedDateCol||dateCol} onChange={setSelectedDateCol} th={th}/>
     </div>
+
+    {/* CUSTOM WIDGETS */}
+    <WidgetBuilder widgets={customWidgets||[]} setWidgets={setCustomWidgets} columns={Object.keys(data?.[0]||{})} allData={filtered} th={th}/>
   </div>;
 }
 
@@ -1246,6 +1354,8 @@ export default function App(){
   const[layout,setLayout]=useState(DEF_LAYOUT);
   const[photos,setPhotos]=useState({});
   const[vendorGoals,setVendorGoals]=useState({});
+  const[customWidgets,setCustomWidgets]=useState([]);
+  const[webhookData,setWebhookData]=useState([]);
   const[showPanel,setShowPanel]=useState(false);
   const[savedViews,setSavedViews]=useState([]);
   const[fsConfig,setFsConfig]=useState({panels:["metrics","monthly","ranking","vendorGoal"],rotate:true,rotateTime:10,sidePos:"bottom",mainPanel:"metrics"});
@@ -1254,8 +1364,8 @@ export default function App(){
   const[customColors,setCustomColors]=useState({});
   const celebQ=useRef([]);const prevSnap=useRef({});const prevCount=useRef({});const nid=useRef(0);const refreshRef=useRef(null);
 
-  // Load saved views on mount
-  useEffect(()=>{setSavedViews(viewsLoad())},[]);
+  // Load saved views + widgets on mount
+  useEffect(()=>{setSavedViews(viewsLoad());setCustomWidgets(widgetsLoad())},[]);
 
   const handleSaveView=useCallback((name)=>{
     const view={name,teams,goals,metrics,columns,celebDur,layout,photos,dark,_saved:Date.now()};
@@ -1312,9 +1422,15 @@ export default function App(){
     if(columns.length===0&&d[0]?.[0]){setColumns(Object.keys(d[0][0]).filter(c=>c.trim()));setLoading(false);setStage("setup");return;}
     dbSave({teams,goals,metrics,columns,celebDur,refreshSec,vendorGoals,layout,photos,dark,fsConfig,customColors});setLoading(false);setStage("live");},[teams,goals,metrics,columns,loadAll,celebDur,layout,photos,dark,fsConfig,customColors]);
 
-  // Auto-refresh — configurable interval
+  // Auto-refresh — configurable interval + webhook poll
   useEffect(()=>{if(stage!=="live")return;if(refreshRef.current)clearInterval(refreshRef.current);
-    refreshRef.current=setInterval(()=>loadAll(teams,true),refreshSec*1000);return()=>{if(refreshRef.current)clearInterval(refreshRef.current);};},[stage,teams,loadAll,refreshSec]);
+    refreshRef.current=setInterval(async()=>{
+      await loadAll(teams,true);
+      // Poll webhook endpoint for notifications
+      try{const r=await fetch("/api/webhook");if(r.ok){const j=await r.json();
+        (j.notifications||[]).forEach(n=>{if(soundOn)playChime();
+          showCeleb({type:n.type||"proposta",vendor:n.vendor,value:n.value,client:n.client,team:n.source||"Webhook"});});}}catch(e){}
+    },refreshSec*1000);return()=>{if(refreshRef.current)clearInterval(refreshRef.current);};},[stage,teams,loadAll,refreshSec,soundOn,showCeleb]);
   // Auto-rotate teams
   useEffect(()=>{if(!autoRot||stage!=="live"||teams.length<=1)return;
     const t=setInterval(()=>{setTrans(true);setTimeout(()=>{setActive(p=>(p+1)%teams.length);setTrans(false);},300);},rotSec*1000);return()=>clearInterval(t);},[autoRot,stage,teams.length,rotSec]);
@@ -1404,7 +1520,8 @@ export default function App(){
         <TeamView team={teams[active]} data={teamsData[active]} metrics={metrics} tc={tc} goals={goals}
           dateRange={dateRange} setDateRange={setDateRange} trans={trans} layout={layout} photos={photos} th={th}
           presMode={presMode} fsConfig={fsConfig} fsPrimary={fsPrimary} onExitPres={()=>{setPresMode(false);if(document.fullscreenElement)document.exitFullscreen?.();}}
-          vendorGoals={vendorGoals} setVendorGoals={setVendorGoals} setGoals={setGoals} columns={columns}/>
+          vendorGoals={vendorGoals} setVendorGoals={setVendorGoals} setGoals={setGoals} columns={columns}
+          customWidgets={customWidgets} setCustomWidgets={setCustomWidgets}/>
       </div>
 
       {teams.length>1&&<div style={{position:"fixed",bottom:14,left:"50%",transform:"translateX(-50%)",display:"flex",gap:6,padding:"6px 14px",
