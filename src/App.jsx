@@ -473,40 +473,39 @@ function UniversalChart({type,data,color,th,height=220,keys}){
 }
 
 // ═══ SMART CHART BOX (with type selector) ═══
-function SmartChartBox({id,title,icon:Icon,color,data,allData,columns,defaultType,focused,onFocus,th,chartH,keys,children}){
-  const[chartType,setChartType]=useState(defaultType||"area");
-  const[metricCol,setMetricCol]=useState("");
-  const[proportion,setProportion]=useState("SUM");
-  const[filters,setFilters]=useState([]);
+// ═══ CHART CONFIG PERSISTENCE ═══
+const CCFG_KEY="mc_chartcfg_v1";
+const ccfgSave=c=>{try{localStorage.setItem(CCFG_KEY,JSON.stringify(c))}catch(e){}};
+const ccfgLoad=()=>{try{const s=localStorage.getItem(CCFG_KEY);return s?JSON.parse(s):{}}catch(e){return{}}};
+
+function SmartChartBox({id,title,icon:Icon,color,data,allData,columns,defaultType,focused,onFocus,th,chartH,keys,children,chartCfg,setChartCfg}){
+  const cfg=chartCfg?.[id]||{};
+  const chartType=cfg.type||defaultType||"area";
+  const filters=cfg.filters||[];
+  const metricCol=cfg.metricCol||"";
+  const proportion=cfg.proportion||"SUM";
   const[showCfg,setShowCfg]=useState(false);
   const isFocused=focused===id;const isOther=focused&&!isFocused;
   const h=isFocused?400:chartH||220;
+  const updCfg=(patch)=>{if(!setChartCfg)return;const n={...chartCfg,[id]:{...cfg,...patch}};setChartCfg(n);ccfgSave(n);};
 
-  // Apply local filters to allData if provided, else use data
   const localData=useMemo(()=>{
-    if(!allData||!filters.length)return data;
+    if(!allData||(!filters.length&&!metricCol))return data;
     let rows=[...allData];
-    filters.forEach(f=>{if(!f.col||!f.val)return;
-      rows=rows.filter(r=>String(r[f.col]||"").trim().toUpperCase()===f.val.toUpperCase());});
-    if(!metricCol)return data;// no metric override
-    // Rebuild chart data from filtered rows
+    filters.forEach(f=>{if(!f.col||!f.val)return;rows=rows.filter(r=>String(r[f.col]||"").trim().toUpperCase()===f.val.toUpperCase());});
+    if(!metricCol)return data;
     const groupCol=columns?.find(c=>c!==metricCol&&rows.some(r=>r[c]))||"";
     if(!groupCol)return data;
     const g={};rows.forEach(r=>{const k=String(r[groupCol]||"").trim();if(!k||k==="-")return;
-      if(!g[k])g[k]=0;
-      if(proportion==="COUNT")g[k]+=1;
-      else if(proportion==="AVG"){g[k]={s:(g[k]?.s||0)+parseBRL(r[metricCol]),c:(g[k]?.c||0)+1};}
-      else g[k]+=parseBRL(r[metricCol]);});
+      if(proportion==="COUNT"){g[k]=(g[k]||0)+1;}
+      else if(proportion==="AVG"){if(!g[k])g[k]={s:0,c:0};g[k].s+=parseBRL(r[metricCol]);g[k].c+=1;}
+      else{g[k]=(g[k]||0)+parseBRL(r[metricCol]);}});
     if(proportion==="AVG")return Object.entries(g).sort((a,b)=>(b[1].s/b[1].c)-(a[1].s/a[1].c)).slice(0,15).map(([name,d])=>({name,valor:d.s/d.c}));
     return Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([name,valor])=>({name,valor,value:valor}));
   },[data,allData,filters,metricCol,proportion,columns]);
 
-  const addFilter=()=>setFilters([...filters,{col:"",val:""}]);
-  const updFilter=(i,k,v)=>{const f=[...filters];f[i]={...f[i],[k]:v};setFilters(f);};
-  const rmFilter=i=>setFilters(filters.filter((_,j)=>j!==i));
-  const filterVals=(col)=>{if(!allData||!col)return[];return[...new Set(allData.map(r=>String(r[col]||"").trim()).filter(Boolean))].sort();};
-  const numCols=columns?.filter(c=>{const v=(allData||[]).slice(0,30).map(r=>r[c]).filter(Boolean);return v.filter(x=>!isNaN(Number(x))||String(x).match(/\d/)).length>v.length*.3;})||[];
-
+  const filterVals=(col)=>col&&allData?[...new Set(allData.map(r=>String(r[col]||"").trim()).filter(Boolean))].sort():[];
+  const numCols=columns?.filter(c=>{const v=(allData||[]).slice(0,30).map(r=>r[c]).filter(Boolean);return v.filter(x=>!isNaN(Number(x))||String(x).match(/[\d,.]/)).length>v.length*.3;})||[];
   const sel={padding:"3px 6px",borderRadius:6,border:`1px solid ${th.border}`,background:th.bg,color:th.textMid,fontSize:9,outline:"none",cursor:"pointer",fontFamily:NUM};
 
   return<div onClick={e=>{e.stopPropagation();onFocus(isFocused?null:id)}} style={{
@@ -520,35 +519,33 @@ function SmartChartBox({id,title,icon:Icon,color,data,allData,columns,defaultTyp
       <Icon size={isOther?10:isFocused?18:14} color={color}/>
       <span style={{fontSize:isOther?9:isFocused?16:13,fontWeight:isFocused?700:600,color:th.text}}>{title}</span>
       {!isOther&&<div style={{marginLeft:"auto",display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
-        {/* Labeled selectors */}
         <div style={{display:"flex",alignItems:"center",gap:2}}>
           <span style={{fontSize:8,color:th.textDim,fontWeight:600}}>Tipo</span>
-          <select value={chartType} onChange={e=>setChartType(e.target.value)} style={sel}>
+          <select value={chartType} onChange={e=>updCfg({type:e.target.value})} style={sel}>
             {CHART_TYPES.map(t=><option key={t} value={t}>{CHART_TYPE_LABELS[t]}</option>)}</select></div>
         {allData&&<button onClick={()=>setShowCfg(!showCfg)} style={{padding:"2px 6px",borderRadius:5,border:`1px solid ${showCfg?color+"66":th.border}`,background:showCfg?`${color}12`:th.bg,color:showCfg?color:th.textDim,fontSize:8,cursor:"pointer",fontWeight:600}}>
           Filtros {filters.length>0?`(${filters.length})`:""}</button>}
       </div>}
     </div>
-    {/* Filter config panel */}
     {!isOther&&showCfg&&allData&&<div style={{marginBottom:12,padding:10,borderRadius:10,background:th.bg,border:`1px solid ${th.borderLight}`}} onClick={e=>e.stopPropagation()}>
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
           <span style={{fontSize:8,color:th.textDim,fontWeight:600}}>Métrica</span>
-          <select value={metricCol} onChange={e=>setMetricCol(e.target.value)} style={sel}>
+          <select value={metricCol} onChange={e=>updCfg({metricCol:e.target.value})} style={sel}>
             <option value="">Padrão</option>{numCols.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}</select></div>
         <div style={{display:"flex",alignItems:"center",gap:3}}>
           <span style={{fontSize:8,color:th.textDim,fontWeight:600}}>Proporção</span>
-          <select value={proportion} onChange={e=>setProportion(e.target.value)} style={sel}>
+          <select value={proportion} onChange={e=>updCfg({proportion:e.target.value})} style={sel}>
             <option value="SUM">Soma (R$)</option><option value="COUNT">Contagem</option><option value="AVG">Média</option></select></div>
-        <button onClick={addFilter} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${color}44`,background:`${color}08`,color,fontSize:9,cursor:"pointer",fontWeight:600}}>+ Filtro</button>
+        <button onClick={()=>updCfg({filters:[...filters,{col:"",val:""}]})} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${color}44`,background:`${color}08`,color,fontSize:9,cursor:"pointer",fontWeight:600}}>+ Filtro</button>
       </div>
       {filters.map((f,i)=><div key={i} style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
-        <select value={f.col} onChange={e=>updFilter(i,"col",e.target.value)} style={{...sel,flex:1}}>
+        <select value={f.col} onChange={e=>{const fs=[...filters];fs[i]={...fs[i],col:e.target.value,val:""};updCfg({filters:fs});}} style={{...sel,flex:1}}>
           <option value="">Coluna</option>{columns?.map(c=><option key={c} value={c}>{c.replace(/:/g,"")}</option>)}</select>
         <span style={{fontSize:9,color:th.textDim}}>=</span>
-        <select value={f.val} onChange={e=>updFilter(i,"val",e.target.value)} style={{...sel,flex:1}}>
+        <select value={f.val} onChange={e=>{const fs=[...filters];fs[i]={...fs[i],val:e.target.value};updCfg({filters:fs});}} style={{...sel,flex:1}}>
           <option value="">Valor</option>{filterVals(f.col).map(v=><option key={v} value={v}>{v}</option>)}</select>
-        <button onClick={()=>rmFilter(i)} style={{background:"transparent",border:"none",cursor:"pointer",color:th.danger,fontSize:10}}>✕</button>
+        <button onClick={()=>updCfg({filters:filters.filter((_,j)=>j!==i)})} style={{background:"transparent",border:"none",cursor:"pointer",color:th.danger,fontSize:10}}>✕</button>
       </div>)}
     </div>}
     {!isOther&&(localData?<UniversalChart type={chartType} data={localData} color={color} th={th} height={h} keys={keys}/>:children)}
@@ -1078,6 +1075,7 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
   const rankingMini2=useMemo(()=>buildRanking(filterByPeriod(miniPeriod2)),[miniPeriod2,filterByPeriod,buildRanking]);
 
   const[focused,setFocused]=useState(null);
+  const[chartCfg,setChartCfg]=useState(()=>ccfgLoad());
 
   const mainVal=computed.find(m=>m.id==="fin")?.value||computed[0]?.value||0;
   const goalPct=goals.teamGoal?(mainVal/goals.teamGoal)*100:null;
@@ -1096,94 +1094,25 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
     const secIds=panels.filter((_,i)=>i!==(fsPrimary%Math.max(panels.length,1)));
     const CH=Math.max(350,Math.floor(window.innerHeight*0.65)); // Fill most of screen
 
-    // Panel content map
+    // Panel content map — uses saved chart types from chartCfg
     const pm={};
-    if(monthly.length>0)pm.monthly=<ResponsiveContainer width="100%" height={CH}><AreaChart data={monthly}>
-      <defs><linearGradient id="pmg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={tc.p} stopOpacity={.2}/><stop offset="95%" stopColor={tc.p} stopOpacity={0}/></linearGradient></defs>
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis dataKey="name" tick={{fill:th.textMid,fontSize:12,fontFamily:NUM}}/><YAxis tick={{fill:th.textMid,fontSize:11,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontSize:13,fontFamily:NUM}} formatter={v=>[fmtBRL(v),"Valor"]}/>
-      <Area type="monotone" dataKey="valor" stroke={tc.p} strokeWidth={3} fill="url(#pmg)" dot={{fill:tc.p,r:4}}/></AreaChart></ResponsiveContainer>;
-    if(byOrigem.length>0)pm.origem=<ResponsiveContainer width="100%" height={CH}><PieChart><Pie data={byOrigem} cx="50%" cy="50%" innerRadius={60} outerRadius={130} paddingAngle={3} dataKey="value"
-      label={({name,percent})=>percent>.04?`${name} ${(percent*100).toFixed(0)}%`:""} labelLine={{stroke:th.textDim}}>{byOrigem.map((_,i)=><Cell key={i} fill={PAL[i%8]}/>)}</Pie>
-      <Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10}}/></PieChart></ResponsiveContainer>;
-    if(monthlyCumul.length>0)pm.cumul=<ResponsiveContainer width="100%" height={CH}><ComposedChart data={monthlyCumul}>
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis dataKey="name" tick={{fill:th.textMid,fontSize:11,fontFamily:NUM}}/>
-      <YAxis yAxisId="left" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <YAxis yAxisId="right" orientation="right" tick={{fill:PAL[4],fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}} formatter={v=>[fmtBRL(v)]}/>
-      <Bar yAxisId="left" dataKey="valor" fill={tc.p} radius={[4,4,0,0]} opacity={.7}/><Line yAxisId="right" type="monotone" dataKey="acumulado" stroke={PAL[4]} strokeWidth={3} dot={{r:4}}/>
-      <Legend wrapperStyle={{fontSize:11,fontFamily:NUM}}/></ComposedChart></ResponsiveContainer>;
-    if(byPlano.length>0)pm.plano=<ResponsiveContainer width="100%" height={Math.max(200,byPlano.length*35)}><BarChart data={byPlano} layout="vertical">
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis type="number" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <YAxis type="category" dataKey="name" tick={{fill:th.textMid,fontSize:11}} width={100}/><Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}} formatter={v=>[fmtBRL(v),"Valor"]}/>
-      <Bar dataKey="valor" radius={[0,8,8,0]}>{byPlano.map((_,i)=><Cell key={i} fill={PAL[i%8]}/>)}</Bar></BarChart></ResponsiveContainer>;
-    if(statusPipeline.length>0)pm.pipeline=<ResponsiveContainer width="100%" height={Math.max(150,statusPipeline.length*35)}><BarChart data={statusPipeline} layout="vertical">
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis type="number" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}}/>
-      <YAxis type="category" dataKey="name" tick={{fill:th.textMid,fontSize:11}} width={110}/><Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}}/>
-      <Bar dataKey="valor" radius={[0,8,8,0]}>{statusPipeline.map((_,i)=><Cell key={i} fill={PAL[i%8]}/>)}</Bar></BarChart></ResponsiveContainer>;
-    if(vendorRace.length>0)pm.race=<ResponsiveContainer width="100%" height={Math.max(200,vendorRace.length*40)}><BarChart data={vendorRace} layout="vertical">
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis type="number" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <YAxis type="category" dataKey="name" tick={{fill:th.textMid,fontSize:12,fontFamily:NUM,fontWeight:600}} width={80}/>
-      <Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}} formatter={v=>[fmtBRL(v),"Valor"]}/>
-      <Bar dataKey="valor" radius={[0,8,8,0]} barSize={24}>{vendorRace.map((_,i)=><Cell key={i} fill={PAL[i%8]}/>)}</Bar></BarChart></ResponsiveContainer>;
-    if(scatterData.length>1)pm.scatter=<ResponsiveContainer width="100%" height={CH}><ScatterChart>
-      <CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/><XAxis dataKey="x" name="Vendas" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}}/>
-      <YAxis dataKey="y" name="Valor" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <ZAxis dataKey="z" range={[60,400]} name="Vidas"/><Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}}/>
-      <Scatter data={scatterData} fill={tc.p}>{scatterData.map((d,i)=><Cell key={i} fill={d.fill}/>)}</Scatter></ScatterChart></ResponsiveContainer>;
-    if(radarData.length>0&&radarKeys.length>1)pm.radar=<ResponsiveContainer width="100%" height={CH}><RadarChart data={radarData}>
-      <PolarGrid stroke={th.borderLight}/><PolarAngleAxis dataKey="dim" tick={{fill:th.textMid,fontSize:10}}/>
-      <PolarRadiusAxis tick={{fill:th.textDim,fontSize:9}} domain={[0,100]}/>
-      {radarKeys.map((k,i)=><Radar key={k} name={k} dataKey={k} stroke={PAL[i%8]} fill={PAL[i%8]} fillOpacity={.15} strokeWidth={2}/>)}
-      <Legend wrapperStyle={{fontSize:11,fontFamily:NUM}}/></RadarChart></ResponsiveContainer>;
-    if(vendorGoalData.length>0)pm.vendorGoal=<ResponsiveContainer width="100%" height={Math.max(250,vendorGoalData.length*38)}>
-      <ComposedChart data={vendorGoalData} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke={th.borderLight}/>
-      <XAxis type="number" tick={{fill:th.textMid,fontSize:10,fontFamily:NUM}} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
-      <YAxis type="category" dataKey="name" tick={{fill:th.textMid,fontSize:11,fontFamily:NUM,fontWeight:600}} width={90}/>
-      <Tooltip contentStyle={{background:th.card,border:`1px solid ${th.border}`,borderRadius:10,fontFamily:NUM}} formatter={(v,n)=>[fmtBRL(v),n==="meta"?"Meta":"Realizado"]}/>
-      <Bar dataKey="valor" radius={[0,8,8,0]} barSize={20}>{vendorGoalData.map((d,i)=><Cell key={i} fill={d.pct>=100?th.success:d.pct>=70?th.warning:th.danger}/>)}</Bar>
-      <Line type="stepAfter" dataKey="meta" stroke={th.danger} strokeWidth={2} strokeDasharray="6 3" dot={false}/><Legend wrapperStyle={{fontSize:10,fontFamily:NUM}} formatter={v=>v==="valor"?"Realizado":"Meta"}/></ComposedChart></ResponsiveContainer>;
-    // Rankings for presentation
-    const mkRank=(rk,color,max)=>rk.length?<div style={{maxHeight:"100%",overflowY:"auto"}}>{rk.slice(0,max||15).map((r,i)=>{const mc=i===0?"#FFD700":i===1?"#94A3B8":i===2?"#CD7F32":color;
-      return<div key={i} style={{display:"flex",alignItems:"center",gap:"clamp(8px,1.5vw,14px)",padding:"clamp(6px,1vh,12px) 4px",borderBottom:i<rk.length-1?"1px solid #1a1f30":"none"}}>
-        <span style={{width:"clamp(28px,4vw,44px)",height:"clamp(28px,4vw,44px)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:`${mc}20`,color:mc,fontSize:"clamp(12px,2vw,20px)",fontWeight:800,fontFamily:NUM,flexShrink:0}}>{i+1}</span>
-        <VendorAvatar name={r.name} photos={photos} size={40}/>
-        <div style={{flex:1}}><div style={{fontSize:"clamp(13px,1.8vw,20px)",fontWeight:700,color:"#E8ECF4"}}>{r.name}</div>
-          <div style={{fontSize:"clamp(10px,1.2vw,14px)",color:"#6B7280"}}>{r.count} vendas · {r.vidas} vidas</div></div>
-        <div style={{fontSize:"clamp(14px,2.2vw,24px)",fontWeight:800,fontFamily:NUM,color,flexShrink:0}}>{fmtBRL(r.total)}</div></div>;})}</div>
-      :<p style={{color:"#555",textAlign:"center",padding:40,fontSize:16}}>Sem dados</p>;
-    pm.ranking=mkRank(ranking,tc.p,20);
-    pm.mini0=mkRank(rankingMini1,"#F59E0B",10);
-    pm.mini1=mkRank(rankingMini2,"#4F46E5",10);
-
-    // METRICS — BILLBOARD SCOREBOARD
-    pm.metrics=<div style={{display:"flex",flexWrap:"wrap",gap:"clamp(8px,1.5vw,16px)",alignContent:"center",height:"100%"}}>
-      {computed.map((m,i)=>{const Icon=iconMap[m.icon]||DollarSign;const val=m.format==="currency"?fmtBRL(m.value):fmtN(m.value);
-        return<div key={m.id} style={{flex:"1 1 clamp(200px,28%,350px)",background:`linear-gradient(135deg,${m.color}12,${m.color}06)`,
-          borderRadius:20,padding:"clamp(16px,3vw,32px)",border:`2px solid ${m.color}30`,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:0,left:0,width:6,height:"100%",background:m.color,borderRadius:"20px 0 0 20px"}}/>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"clamp(8px,1.5vw,16px)",paddingLeft:8}}>
-            <Icon size={24} color={m.color}/><span style={{color:"#8B93A7",fontSize:"clamp(12px,1.5vw,18px)",fontWeight:600}}>{m.name}</span></div>
-          <div style={{fontSize:"clamp(28px,5vw,56px)",fontWeight:800,color:"#E8ECF4",fontFamily:NUM,paddingLeft:8,letterSpacing:"-1px",lineHeight:1}}>{val}</div>
-        </div>;})}
-      {goalPct!==null&&<div style={{flex:"1 1 100%",background:`linear-gradient(135deg,${tc.p}12,${tc.p}06)`,borderRadius:20,padding:"clamp(16px,2vw,24px)",border:`2px solid ${tc.p}30`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <span style={{fontSize:"clamp(14px,1.5vw,18px)",fontWeight:700,color:"#8B93A7"}}>Meta da Equipe</span>
-          <span style={{fontSize:"clamp(24px,4vw,48px)",fontWeight:800,color:goalPct>=100?"#34D399":tc.p,fontFamily:NUM}}>{goalPct.toFixed(1)}%</span></div>
-        <PBar pct={goalPct} color={goalPct>=100?"#34D399":tc.p} h={12}/>
-        <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
-          <span style={{fontSize:"clamp(12px,1.3vw,16px)",color:"#6B7280",fontFamily:NUM}}>{fmtBRL(mainVal)}</span>
-          <span style={{fontSize:"clamp(12px,1.3vw,16px)",color:"#6B7280",fontFamily:NUM}}>Meta: {fmtBRL(goals.teamGoal)}</span></div></div>}
-    </div>;
-
-    // NEW CHART PANELS
-    if(funnelData.length>0)pm.funnel=<FunnelChart data={funnelData} th={{...th,textMid:"#8B93A7",borderLight:"#1a1f30"}} height={Math.max(250,funnelData.length*50)}/>;
-    if(funnelData.length>0)pm.pyramid=<PyramidChart data={funnelData} th={{...th,textMid:"#8B93A7"}} height={Math.max(250,funnelData.length*50)}/>;
+    const darkTh={...th,text:"#E8ECF4",textMid:"#8B93A7",textDim:"#555",card:"#0d1220",border:"#1a1f30",borderLight:"#1a1f30",bg:"#0a0e18"};
+    const getType=(id,def)=>chartCfg?.[id]?.type||def;
+    if(monthly.length>0)pm.monthly=<UniversalChart type={getType("monthly","area")} data={monthly} color={tc.p} th={darkTh} height={CH}/>;
+    if(byOrigem.length>0)pm.origem=<UniversalChart type={getType("origem","pie")} data={byOrigem.map(d=>({...d,valor:d.value}))} color={PAL[1]} th={darkTh} height={CH}/>;
+    if(monthlyCumul.length>0)pm.cumul=<UniversalChart type={getType("cumul","composed")} data={monthlyCumul} color={PAL[4]} th={darkTh} height={CH}/>;
+    if(byPlano.length>0)pm.plano=<UniversalChart type={getType("plano","barH")} data={byPlano} color={PAL[2]} th={darkTh} height={Math.max(200,byPlano.length*35)}/>;
+    if(statusPipeline.length>0)pm.pipeline=<UniversalChart type={getType("pipeline","barH")} data={statusPipeline} color={PAL[3]} th={darkTh} height={Math.max(150,statusPipeline.length*35)}/>;
+    if(vendorRace.length>0)pm.race=<UniversalChart type={getType("race","barH")} data={vendorRace} color={PAL[5]} th={darkTh} height={Math.max(200,vendorRace.length*40)}/>;
+    if(scatterData.length>1)pm.scatter=<UniversalChart type={getType("scatter","scatter")} data={scatterData} color={tc.p} th={darkTh} height={CH}/>;
+    if(radarData.length>0&&radarKeys.length>1)pm.radar=<UniversalChart type={getType("radar","radar")} data={radarData} color={PAL[7]} th={darkTh} height={CH} keys={radarKeys}/>;
+    if(vendorGoalData.length>0)pm.vendorGoal=<UniversalChart type={getType("vendorGoal","barH")} data={vendorGoalData} color={PAL[5]} th={darkTh} height={Math.max(250,vendorGoalData.length*38)}/>;
+    if(funnelData.length>0)pm.funnel=<FunnelChart data={funnelData} th={darkTh} height={Math.max(250,funnelData.length*50)}/>;
     pm.gauge=<div style={{display:"flex",flexWrap:"wrap",gap:16,justifyContent:"center",alignItems:"center",height:"100%"}}>
       {ranking.slice(0,6).map((r,i)=>{const g=vendorGoals?.[r.name]||goals.individualGoal||100000;
-        return<div key={i} style={{textAlign:"center"}}><GaugeChart value={r.total} max={g} label={r.name.split(" ").slice(0,2).join(" ")} color={PAL[i%8]} th={{text:"#E8ECF4",textMid:"#8B93A7",textDim:"#555",borderLight:"#1a1f30"}}/></div>;})}</div>;
-    if(monthly.length>0)pm.wave=<WaveChart data={monthly} color={tc.p} th={{...th,card:"#0d1220",border:"#1a1f30",textMid:"#8B93A7"}} height={CH}/>;
-    if(crossCompData.data.length>0)pm.crossComp=<CrossCompChart data={crossCompData.data} keys={crossCompData.keys} th={{...th,card:"#0d1220",border:"#1a1f30",textMid:"#8B93A7",borderLight:"#1a1f30"}} height={CH}/>;
+        return<div key={i} style={{textAlign:"center"}}><GaugeChart value={r.total} max={g} label={r.name.split(" ").slice(0,2).join(" ")} color={PAL[i%8]} th={darkTh}/></div>;})}</div>;
+    if(monthly.length>0)pm.wave=<UniversalChart type="wave" data={monthly} color={tc.p} th={darkTh} height={CH}/>;
+    if(crossCompData.data.length>0)pm.crossComp=<UniversalChart type={getType("crossComp","bar")} data={crossCompData.data} color={PAL[7]} th={darkTh} height={CH} keys={crossCompData.keys}/>;
 
     return<><PresentationView panelMap={pm} fsConfig={fsConfig} fsPrimary={fsPrimary} th={th} onExit={onExitPres} teamName={team.name} tc={tc}/>
       <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:201}}><NewsTicker items={tickerItems} th={th} tc={tc}/></div></>;
@@ -1237,29 +1166,29 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
 
     {/* ALL CHARTS — UNIVERSAL WITH TYPE SELECTOR */}
     <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-      {monthly.length>0&&<SmartChartBox id="monthly" title="Evolução Mensal" icon={Activity} color={tc.p} data={monthly} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="area" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {byOrigem.length>0&&<SmartChartBox id="origem" title="Por Origem" icon={Globe} color={PAL[1]} data={byOrigem.map(d=>({...d,valor:d.value}))} defaultType="pie" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {monthlyCumul.length>0&&<SmartChartBox id="cumul" title="Mensal + Acumulado" icon={TrendingUp} color={PAL[4]} data={monthlyCumul} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="composed" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
+      {monthly.length>0&&<SmartChartBox id="monthly" title="Evolução Mensal" icon={Activity} color={tc.p} data={monthly} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="area" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {byOrigem.length>0&&<SmartChartBox id="origem" title="Por Origem" icon={Globe} color={PAL[1]} data={byOrigem.map(d=>({...d,valor:d.value}))} defaultType="pie" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {monthlyCumul.length>0&&<SmartChartBox id="cumul" title="Mensal + Acumulado" icon={TrendingUp} color={PAL[4]} data={monthlyCumul} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="composed" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-      {byPlano.length>0&&<SmartChartBox id="plano" title="Vendas por Plano" icon={BarChart3} color={PAL[2]} data={byPlano} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {statusPipeline.length>0&&<SmartChartBox id="pipeline" title="Pipeline por Status" icon={Activity} color={PAL[3]} data={statusPipeline} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
+      {byPlano.length>0&&<SmartChartBox id="plano" title="Vendas por Plano" icon={BarChart3} color={PAL[2]} data={byPlano} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {statusPipeline.length>0&&<SmartChartBox id="pipeline" title="Pipeline por Status" icon={Activity} color={PAL[3]} data={statusPipeline} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-      {vendorRace.length>0&&<SmartChartBox id="race" title="Top Vendedores" icon={Trophy} color={PAL[5]} data={vendorRace} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {funnelData.length>0&&<SmartChartBox id="funnel" title="Funil de Vendas" icon={Activity} color={PAL[3]} data={funnelData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="funnel" focused={focused} onFocus={setFocused} th={th} chartH={Math.max(180,funnelData.length*45)}/>}
+      {vendorRace.length>0&&<SmartChartBox id="race" title="Top Vendedores" icon={Trophy} color={PAL[5]} data={vendorRace} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {funnelData.length>0&&<SmartChartBox id="funnel" title="Funil de Vendas" icon={Activity} color={PAL[3]} data={funnelData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="funnel" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={Math.max(180,funnelData.length*45)}/>}
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-      {scatterData.length>1&&<SmartChartBox id="scatter" title="Vendas x Faturamento" icon={Target} color={PAL[6]} data={scatterData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="scatter" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {radarData.length>0&&radarKeys.length>1&&<SmartChartBox id="radar" title="Radar Vendedores" icon={Star} color={PAL[7]} data={radarData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="radar" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight} keys={radarKeys}/>}
+      {scatterData.length>1&&<SmartChartBox id="scatter" title="Vendas x Faturamento" icon={Target} color={PAL[6]} data={scatterData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="scatter" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {radarData.length>0&&radarKeys.length>1&&<SmartChartBox id="radar" title="Radar Vendedores" icon={Star} color={PAL[7]} data={radarData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="radar" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight} keys={radarKeys}/>}
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-      {vendorGoalData.length>0&&<SmartChartBox id="vendorGoal" title="Meta por Vendedor" icon={Crosshair} color={PAL[5]} data={vendorGoalData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartH={Math.max(200,vendorGoalData.length*30)}/>}
-      {monthly.length>0&&<SmartChartBox id="wave" title="Onda de Vendas" icon={Activity} color={tc.p} data={monthly} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="wave" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight}/>}
-      {crossCompData.data.length>0&&<SmartChartBox id="crossComp" title="Comparacao Cruzada" icon={BarChart3} color={PAL[7]} data={crossCompData.data} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="bar" focused={focused} onFocus={setFocused} th={th} chartH={L.chartHeight} keys={crossCompData.keys}/>}
+      {vendorGoalData.length>0&&<SmartChartBox id="vendorGoal" title="Meta por Vendedor" icon={Crosshair} color={PAL[5]} data={vendorGoalData} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="barH" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={Math.max(200,vendorGoalData.length*30)}/>}
+      {monthly.length>0&&<SmartChartBox id="wave" title="Onda de Vendas" icon={Activity} color={tc.p} data={monthly} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="wave" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight}/>}
+      {crossCompData.data.length>0&&<SmartChartBox id="crossComp" title="Comparacao Cruzada" icon={BarChart3} color={PAL[7]} data={crossCompData.data} allData={filtered} columns={Object.keys(data?.[0]||{})} defaultType="bar" focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg} chartH={L.chartHeight} keys={crossCompData.keys}/>}
     </div>
     <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-      {ranking.length>0&&<ChartBox id="ranking" title={`Ranking (${ranking.length})`} icon={Crown} color={th.warning} focused={focused} onFocus={setFocused} th={th}>
+      {ranking.length>0&&<ChartBox id="ranking" title={`Ranking (${ranking.length})`} icon={Crown} color={th.warning} focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg}>
         <div style={{maxHeight:focused==="ranking"?600:L.chartHeight+60,overflowY:"auto"}}>{ranking.slice(0,focused==="ranking"?30:L.rankingMax).map((r,i)=>{
           const gp=(vendorGoals?.[r.name]||goals.individualGoal)?(r.total/(vendorGoals?.[r.name]||goals.individualGoal))*100:null;const mc=i===0?"#FFD700":i===1?"#94A3B8":i===2?"#CD7F32":tc.p;
           return<div key={i} onClick={e=>{e.stopPropagation();vendorCol&&toggleCross(vendorCol,r.name)}}
@@ -1274,7 +1203,7 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
               <div style={{fontSize:L.rankingFontSize+1,fontWeight:700,fontFamily:NUM,color:tc.p}}>{fmtBRL(r.total)}</div>
               {gp!==null&&<div style={{fontSize:9,color:gp>=100?th.success:th.textDim,fontFamily:NUM}}>{gp.toFixed(0)}%</div>}</div>
           </div>;})}</div></ChartBox>}
-      {ranking.length>0&&<ChartBox id="gauge" title="Velocimetro" icon={Crosshair} color={PAL[2]} focused={focused} onFocus={setFocused} th={th}>
+      {ranking.length>0&&<ChartBox id="gauge" title="Velocimetro" icon={Crosshair} color={PAL[2]} focused={focused} onFocus={setFocused} th={th} chartCfg={chartCfg} setChartCfg={setChartCfg}>
         <div style={{display:"flex",flexWrap:"wrap",gap:12,justifyContent:"center"}}>
           {ranking.slice(0,focused==="gauge"?12:6).map((r,i)=>{const g=vendorGoals?.[r.name]||goals.individualGoal||100000;
             return<div key={i} style={{textAlign:"center"}}><GaugeChart value={r.total} max={g} label={r.name.split(" ").slice(0,2).join(" ")} color={PAL[i%8]} th={th}/></div>;})}</div></ChartBox>}
