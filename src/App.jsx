@@ -1004,19 +1004,17 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
   const monthlyRanking=useMemo(()=>buildRanking(thisMonthData),[thisMonthData,buildRanking]);
 
   const vendorGoalData=useMemo(()=>{
-    // Get all vendors that have goals defined
     const allGoalVendors=Object.keys(vendorGoals||{}).filter(v=>vendorGoals[v]>0);
     const defaultGoal=goals.individualGoal||0;
-    // Merge: vendors with goals + vendors with sales this month
-    const vendorSet=new Set([...allGoalVendors,...monthlyRanking.map(r=>r.name)]);
+    // Always show vendors: from goals + from monthly ranking + from main ranking
+    const vendorSet=new Set([...allGoalVendors,...monthlyRanking.map(r=>r.name),...ranking.slice(0,12).map(r=>r.name)]);
     return[...vendorSet].map(name=>{
-      const sale=monthlyRanking.find(r=>r.name===name);
+      const sale=monthlyRanking.find(r=>r.name===name)||ranking.find(r=>r.name===name);
       const meta=vendorGoals?.[name]||defaultGoal;
-      if(!meta)return null;
       const valor=sale?.total||0;
-      return{name:name.split(" ").slice(0,2).join(" "),fullName:name,valor,meta,pct:Math.round((valor/meta)*100),count:sale?.count||0,vidas:sale?.vidas||0};
-    }).filter(Boolean).sort((a,b)=>b.pct-a.pct);
-  },[monthlyRanking,goals.individualGoal,vendorGoals]);
+      return{name:name.split(" ").slice(0,2).join(" "),fullName:name,valor,meta:meta||0,pct:meta?Math.round((valor/meta)*100):0,count:sale?.count||0,vidas:sale?.vidas||0};
+    }).filter(Boolean).sort((a,b)=>b.valor-a.valor);
+  },[monthlyRanking,ranking,goals.individualGoal,vendorGoals]);
 
   // ─── FUNNEL DATA (status flow) ───
   const funnelData=useMemo(()=>{
