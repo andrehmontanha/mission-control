@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import Papa from "papaparse";
+import * as Papa from "papaparse";
 import {
   BarChart,Bar,PieChart,Pie,Cell,AreaChart,Area,
   XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,
@@ -227,7 +227,7 @@ function FullscreenConfig({config,setConfig,th}){
           style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${th.border}`,background:th.bg,color:th.text,fontSize:12,outline:"none",fontFamily:NUM,width:"100%"}}/>
       </div>
       <div style={{flex:"1 1 180px"}}>
-        <span style={{fontSize:10,color:th.textMid,fontWeight:600,display:"block",marginBottom:4}}>SECUNDÁRIOS</span>
+        <span style={{fontSize:10,color:th.textMid,fontWeight:600,display:"block",marginBottom:4}}>POSIÇÃO</span>
         <div style={{display:"flex",gap:3}}>
           {[["bottom","Baixo",ArrowDown],["top","Cima",ArrowUp],["left","Esq.",ArrowLeft],["right","Dir.",ArrowRight]].map(([v,l,I])=>
             <button key={v} onClick={()=>setConfig({...config,sidePos:v})} style={{flex:1,padding:"4px 6px",borderRadius:6,
@@ -235,6 +235,12 @@ function FullscreenConfig({config,setConfig,th}){
               color:config.sidePos===v?th.primary:th.textDim,fontSize:9,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
               <I size={10}/>{l}</button>)}
         </div>
+      </div>
+      <div style={{flex:"1 1 200px"}}>
+        <span style={{fontSize:10,color:th.textMid,fontWeight:600,display:"block",marginBottom:4}}>TAMANHO SECUNDÁRIOS ({config.secSize||25}%)</span>
+        <input type="range" min={10} max={50} value={config.secSize||25} onChange={e=>setConfig({...config,secSize:Number(e.target.value)})}
+          style={{width:"100%",accentColor:th.primary}}/>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:8,color:th.textDim}}><span>Pequeno</span><span>Grande</span></div>
       </div>
     </div>
   </div>;
@@ -270,10 +276,13 @@ function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
   const isH=pos==="top"||pos==="bottom";
   const flexDir=pos==="top"?"column-reverse":pos==="bottom"?"column":pos==="left"?"row-reverse":"row";
   const accent=tc?.p||th.primary;
+  const secPct=fsConfig.secSize||25; // % of screen for secondaries
+  const secDim=`${secPct}vh`;
+  const secScale=Math.max(0.35,Math.min(0.8,secPct/40));
 
   return<div style={{position:"fixed",inset:0,zIndex:200,background:"#050810",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:FONT}}>
     {/* Scoreboard header */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 24px",background:"rgba(10,14,24,0.95)",borderBottom:`2px solid ${accent}33`,flexShrink:0}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 24px",background:"rgba(10,14,24,0.95)",borderBottom:`2px solid ${accent}33`,flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{width:12,height:12,borderRadius:"50%",background:accent,boxShadow:`0 0 12px ${accent}`,animation:"pulse 2s ease-in-out infinite"}}/>
         <span style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>{teamName}</span>
@@ -287,34 +296,32 @@ function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
 
     {/* Content */}
     <div style={{flex:1,display:"flex",flexDirection:flexDir,gap:6,padding:6,overflow:"hidden"}}>
-      {/* PRIMARY — BILLBOARD */}
-      <div key={primaryId} style={{flex:"1 1 0",minWidth:0,minHeight:0,background:"linear-gradient(180deg,#0a0e18,#0d1220)",borderRadius:16,padding:"clamp(16px,3vw,32px)",overflow:"auto",
+      {/* PRIMARY */}
+      <div key={primaryId} style={{flex:"1 1 0",minWidth:0,minHeight:0,background:"linear-gradient(180deg,#0a0e18,#0d1220)",borderRadius:16,padding:"clamp(12px,2vw,24px)",overflow:"auto",
         border:`2px solid ${accent}30`,boxShadow:`0 0 60px ${accent}10, inset 0 1px 0 ${accent}15`,
         display:"flex",flexDirection:"column",animation:"fadeUp .5s ease-out"}}>
-        {/* Panel label */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"clamp(12px,2vw,24px)"}}>
-          <div style={{width:4,height:24,borderRadius:2,background:accent}}/>
-          <span style={{fontSize:"clamp(14px,2vw,22px)",fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:2,fontFamily:NUM}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"clamp(8px,1.5vw,16px)",flexShrink:0}}>
+          <div style={{width:4,height:20,borderRadius:2,background:accent}}/>
+          <span style={{fontSize:"clamp(12px,1.8vw,20px)",fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:2,fontFamily:NUM}}>
             {PANEL_LABELS[primaryId]||primaryId}</span>
         </div>
-        {/* Panel content */}
-        <div style={{flex:1,minHeight:0}}>
-          {panelMap[primaryId]||<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"#444",fontSize:18}}>Sem dados para este painel</div>}
+        <div style={{flex:1,minHeight:0,overflow:"auto"}}>
+          {panelMap[primaryId]||<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"#444",fontSize:18}}>Sem dados</div>}
         </div>
       </div>
 
-      {/* SECONDARIES */}
-      {secIds.length>0&&<div style={{flex:"0 0 auto",display:"flex",flexDirection:isH?"row":"column",gap:4,overflow:"auto",
-        [isH?"height":"width"]:isH?"clamp(100px,15vh,160px)":"clamp(140px,18vw,220px)"}}>
-        {secIds.map(id=><div key={id} style={{flex:"1 1 0",background:"#0a0e18",borderRadius:12,padding:8,overflow:"hidden",border:`1px solid #1a1f30`,position:"relative",minWidth:isH?140:0,minHeight:isH?0:70}}>
-          <div style={{fontSize:9,fontWeight:700,color:accent,marginBottom:4,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM}}>{PANEL_LABELS[id]||id}</div>
-          <div style={{transform:isH?"scale(0.45)":"scale(0.5)",transformOrigin:"top left",width:isH?"222%":"200%",height:isH?"222%":"200%",pointerEvents:"none",filter:"brightness(0.8)"}}>{panelMap[id]}</div>
+      {/* SECONDARIES — configurable size */}
+      {secIds.length>0&&<div style={{flex:`0 0 ${isH?secDim:secDim.replace("vh","vw")}`,display:"flex",flexDirection:isH?"row":"column",gap:4,overflow:"auto"}}>
+        {secIds.map(id=><div key={id} style={{flex:"1 1 0",background:"#0a0e18",borderRadius:10,padding:6,overflow:"hidden",border:`1px solid #1a1f30`,position:"relative",
+          minWidth:isH?Math.max(120,Math.floor(window.innerWidth/secIds.length)-20):0,minHeight:isH?0:60}}>
+          <div style={{fontSize:8,fontWeight:700,color:accent,marginBottom:3,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM}}>{PANEL_LABELS[id]||id}</div>
+          <div style={{transform:`scale(${secScale})`,transformOrigin:"top left",width:`${Math.round(100/secScale)}%`,height:`${Math.round(100/secScale)}%`,pointerEvents:"none"}}>{panelMap[id]}</div>
         </div>)}
       </div>}
     </div>
 
     {/* Bottom indicators */}
-    {panels.length>1&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"8px 0",background:"rgba(5,8,16,0.95)"}}>
+    {panels.length>1&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"6px 0",background:"rgba(5,8,16,0.95)",flexShrink:0}}>
       {panels.map((id,i)=><div key={id} style={{width:i===(fsPrimary%panels.length)?40:8,height:4,borderRadius:2,
         background:i===(fsPrimary%panels.length)?accent:"#333",transition:"all .5s",boxShadow:i===(fsPrimary%panels.length)?`0 0 8px ${accent}60`:"none"}}/>)}
     </div>}
