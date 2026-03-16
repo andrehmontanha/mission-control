@@ -266,63 +266,105 @@ function ThemeCustomizer({customColors,setCustomColors,th}){
 // ═══ PRESENTATION VIEW — Actual fullscreen renderer ═══
 function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
   const panels=fsConfig.panels||[];
+  const[showEditor,setShowEditor]=useState(false);
+  const[localCfg,setLocalCfg]=useState(fsConfig);
+  const sizes=localCfg.panelSizes||{};
+  const gap=localCfg.gap??8;
+  const accent=tc?.p||th.primary;
+
+  // Save sizes back
+  const updSize=(id,patch)=>{const ns={...sizes,[id]:{...(sizes[id]||{}),...patch}};setLocalCfg({...localCfg,panelSizes:ns});};
+  const updGap=v=>setLocalCfg({...localCfg,gap:v});
+
+  // Sync back to parent on close
+  const applyAndClose=()=>{if(fsConfig._setConfig)fsConfig._setConfig(localCfg);setShowEditor(false);};
+
   if(!panels.length)return<div style={{position:"fixed",inset:0,zIndex:200,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div style={{textAlign:"center"}}><p style={{color:"#888",fontSize:20}}>Nenhum painel selecionado</p>
-      <button onClick={onExit} style={{marginTop:20,padding:"12px 32px",borderRadius:12,border:"none",background:tc?.p||"#4F46E5",color:"#fff",cursor:"pointer",fontSize:16,fontWeight:700}}>Configurar</button></div></div>;
+      <button onClick={onExit} style={{marginTop:20,padding:"12px 32px",borderRadius:12,border:"none",background:accent,color:"#fff",cursor:"pointer",fontSize:16,fontWeight:700}}>Configurar</button></div></div>;
 
   const primaryId=panels[fsPrimary%panels.length];
-  const secIds=panels.filter((_,i)=>i!==(fsPrimary%panels.length));
-  const pos=fsConfig.sidePos||"bottom";
-  const isH=pos==="top"||pos==="bottom";
-  const flexDir=pos==="top"?"column-reverse":pos==="bottom"?"column":pos==="left"?"row-reverse":"row";
-  const accent=tc?.p||th.primary;
-  const secPct=fsConfig.secSize||25; // % of screen for secondaries
-  const secDim=`${secPct}vh`;
-  const secScale=Math.max(0.35,Math.min(0.8,secPct/40));
 
   return<div style={{position:"fixed",inset:0,zIndex:200,background:"#050810",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:FONT}}>
-    {/* Scoreboard header */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 24px",background:"rgba(10,14,24,0.95)",borderBottom:`2px solid ${accent}33`,flexShrink:0}}>
+    {/* Header */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px",background:"rgba(10,14,24,0.95)",borderBottom:`2px solid ${accent}33`,flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:12,height:12,borderRadius:"50%",background:accent,boxShadow:`0 0 12px ${accent}`,animation:"pulse 2s ease-in-out infinite"}}/>
-        <span style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>{teamName}</span>
-        <span style={{fontSize:11,color:accent,fontFamily:NUM,background:`${accent}15`,padding:"3px 10px",borderRadius:6,fontWeight:600}}>AO VIVO</span>
+        <div style={{width:10,height:10,borderRadius:"50%",background:accent,boxShadow:`0 0 12px ${accent}`,animation:"pulse 2s ease-in-out infinite"}}/>
+        <span style={{fontSize:18,fontWeight:800,color:"#fff"}}>{teamName}</span>
+        <span style={{fontSize:10,color:accent,fontFamily:NUM,background:`${accent}15`,padding:"2px 8px",borderRadius:5,fontWeight:600}}>AO VIVO</span>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
         <LiveClock th={{...th,primary:accent,text:"#fff",textDim:"#555"}}/>
-        <button onClick={onExit} style={{padding:"6px 16px",borderRadius:8,border:`1px solid #333`,background:"#111",cursor:"pointer",color:"#888",fontSize:11,fontWeight:600}}>✕ Sair</button>
+        <button onClick={()=>setShowEditor(!showEditor)} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${showEditor?"#4F46E5":"#333"}`,background:showEditor?"#4F46E522":"#111",cursor:"pointer",color:showEditor?"#818CF8":"#888",fontSize:10,fontWeight:600}}>
+          <Sliders size={11}/></button>
+        <button onClick={()=>{applyAndClose();onExit();}} style={{padding:"5px 14px",borderRadius:7,border:"1px solid #333",background:"#111",cursor:"pointer",color:"#888",fontSize:10,fontWeight:600}}>✕ Sair</button>
       </div>
     </div>
 
-    {/* Content */}
-    <div style={{flex:1,display:"flex",flexDirection:flexDir,gap:6,padding:6,overflow:"hidden"}}>
-      {/* PRIMARY */}
-      <div key={primaryId} style={{flex:"1 1 0",minWidth:0,minHeight:0,background:"linear-gradient(180deg,#0a0e18,#0d1220)",borderRadius:16,padding:"clamp(12px,2vw,24px)",overflow:"auto",
-        border:`2px solid ${accent}30`,boxShadow:`0 0 60px ${accent}10, inset 0 1px 0 ${accent}15`,
-        display:"flex",flexDirection:"column",animation:"fadeUp .5s ease-out"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"clamp(8px,1.5vw,16px)",flexShrink:0}}>
-          <div style={{width:4,height:20,borderRadius:2,background:accent}}/>
-          <span style={{fontSize:"clamp(12px,1.8vw,20px)",fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:2,fontFamily:NUM}}>
-            {PANEL_LABELS[primaryId]||primaryId}</span>
-        </div>
-        <div style={{flex:1,minHeight:0,overflow:"auto"}}>
-          {panelMap[primaryId]||<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"#444",fontSize:18}}>Sem dados</div>}
-        </div>
+    {/* Live editor sidebar */}
+    {showEditor&&<div style={{position:"absolute",top:44,right:0,width:280,bottom:40,background:"#0d1220ee",borderLeft:"1px solid #1a2030",zIndex:10,padding:14,overflowY:"auto",backdropFilter:"blur(8px)"}}>
+      <h4 style={{fontSize:12,fontWeight:700,color:"#E8ECF4",marginBottom:10}}>Configurar Layout</h4>
+      <div style={{marginBottom:12}}>
+        <span style={{fontSize:9,color:"#8B93A7",fontWeight:600}}>Espaçamento entre blocos: {gap}px</span>
+        <input type="range" min={0} max={24} value={gap} onChange={e=>updGap(Number(e.target.value))} style={{width:"100%",accentColor:accent}}/>
       </div>
+      {panels.map(id=>{const s=sizes[id]||{};const isPrim=id===primaryId;
+        return<div key={id} style={{padding:8,borderRadius:8,border:`1px solid ${isPrim?"#4F46E566":"#1a2030"}`,marginBottom:6,background:isPrim?"#4F46E510":"transparent"}}>
+          <div style={{fontSize:9,fontWeight:700,color:isPrim?accent:"#8B93A7",marginBottom:6,textTransform:"uppercase"}}>{isPrim?"★ ":""}{PANEL_LABELS[id]||id}</div>
+          <div style={{display:"flex",gap:6,marginBottom:4}}>
+            <div style={{flex:1}}>
+              <span style={{fontSize:8,color:"#6B7280"}}>Largura (%)</span>
+              <input type="range" min={20} max={100} value={s.w||100} onChange={e=>updSize(id,{w:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/>
+              <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{s.w||100}%</span>
+            </div>
+            <div style={{flex:1}}>
+              <span style={{fontSize:8,color:"#6B7280"}}>Altura (px)</span>
+              <input type="range" min={80} max={600} step={10} value={s.h||0} onChange={e=>updSize(id,{h:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/>
+              <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{s.h||"auto"}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <div style={{flex:1}}>
+              <span style={{fontSize:8,color:"#6B7280"}}>Padding</span>
+              <input type="range" min={4} max={32} value={s.p||12} onChange={e=>updSize(id,{p:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/>
+              <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{s.p||12}px</span>
+            </div>
+            <div style={{flex:1}}>
+              <span style={{fontSize:8,color:"#6B7280"}}>Borda</span>
+              <input type="range" min={4} max={24} value={s.r||12} onChange={e=>updSize(id,{r:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/>
+              <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{s.r||12}px</span>
+            </div>
+          </div>
+        </div>;})}
+      <button onClick={applyAndClose} style={{width:"100%",padding:"8px 0",borderRadius:8,border:"none",background:`linear-gradient(135deg,#4F46E5,#06B6D4)`,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",marginTop:8}}>Aplicar</button>
+    </div>}
 
-      {/* SECONDARIES — configurable size */}
-      {secIds.length>0&&<div style={{flex:`0 0 ${isH?secDim:secDim.replace("vh","vw")}`,display:"flex",flexDirection:isH?"row":"column",gap:4,overflow:"auto"}}>
-        {secIds.map(id=><div key={id} style={{flex:"1 1 0",background:"#0a0e18",borderRadius:10,padding:6,overflow:"hidden",border:`1px solid #1a1f30`,position:"relative",
-          minWidth:isH?Math.max(120,Math.floor(window.innerWidth/secIds.length)-20):0,minHeight:isH?0:60}}>
-          <div style={{fontSize:8,fontWeight:700,color:accent,marginBottom:3,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM}}>{PANEL_LABELS[id]||id}</div>
-          <div style={{transform:`scale(${secScale})`,transformOrigin:"top left",width:`${Math.round(100/secScale)}%`,height:`${Math.round(100/secScale)}%`,pointerEvents:"none"}}>{panelMap[id]}</div>
-        </div>)}
-      </div>}
+    {/* BLOCKS GRID — each panel is an independent flex block */}
+    <div style={{flex:1,display:"flex",flexWrap:"wrap",alignContent:"flex-start",gap,padding:gap,overflow:"auto"}}>
+      {panels.map(id=>{const s=sizes[id]||{};const isPrim=id===primaryId;
+        const w=isPrim?(s.w||100):(s.w||Math.max(25,Math.floor(90/Math.max(panels.length-1,1))));
+        const h=s.h||null;const pad=s.p||(isPrim?20:10);const rad=s.r||(isPrim?16:10);
+        return<div key={id} style={{
+          flex:`0 0 calc(${w}% - ${gap}px)`,maxWidth:`calc(${w}% - ${gap}px)`,
+          height:h?h:"auto",minHeight:isPrim?"40vh":80,
+          background:isPrim?"linear-gradient(180deg,#0a0e18,#0d1220)":"#0a0e18",
+          borderRadius:rad,padding:pad,overflow:"auto",
+          border:`${isPrim?2:1}px solid ${isPrim?accent+"30":"#1a1f30"}`,
+          boxShadow:isPrim?`0 0 40px ${accent}10`:"none",
+          transition:"all .5s cubic-bezier(.16,1,.3,1)",
+        }}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isPrim?16:6,flexShrink:0}}>
+            {isPrim&&<div style={{width:4,height:18,borderRadius:2,background:accent}}/>}
+            <span style={{fontSize:isPrim?16:10,fontWeight:isPrim?800:700,color:isPrim?accent:"#8B93A7",textTransform:"uppercase",letterSpacing:isPrim?2:1,fontFamily:NUM}}>
+              {PANEL_LABELS[id]||id}</span>
+          </div>
+          {panelMap[id]||<div style={{color:"#444",textAlign:"center",padding:20}}>Sem dados</div>}
+        </div>;})}
     </div>
 
-    {/* Bottom indicators */}
+    {/* Indicators */}
     {panels.length>1&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"6px 0",background:"rgba(5,8,16,0.95)",flexShrink:0}}>
-      {panels.map((id,i)=><div key={id} style={{width:i===(fsPrimary%panels.length)?40:8,height:4,borderRadius:2,
+      {panels.map((id,i)=><div key={id} style={{width:i===(fsPrimary%panels.length)?36:6,height:4,borderRadius:2,
         background:i===(fsPrimary%panels.length)?accent:"#333",transition:"all .5s",boxShadow:i===(fsPrimary%panels.length)?`0 0 8px ${accent}60`:"none"}}/>)}
     </div>}
   </div>;
@@ -910,7 +952,7 @@ function Setup({teams,setTeams,goals,setGoals,metrics,setMetrics,columns,onStart
 }
 
 // ═══ TEAM VIEW ═══
-function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,trans,layout,photos,th,presMode,fsConfig,fsPrimary,onExitPres,vendorGoals,setVendorGoals,columns,customWidgets,setCustomWidgets}){
+function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,trans,layout,photos,th,presMode,fsConfig,setFsConfig,fsPrimary,onExitPres,vendorGoals,setVendorGoals,columns,customWidgets,setCustomWidgets}){
   const[fCol,setFCol]=useState(""),[fVal,setFVal]=useState("");
   const[selectedDateCol,setSelectedDateCol]=useState("");
   // Detect ALL date columns
@@ -1152,7 +1194,7 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
           <span style={{fontSize:"clamp(12px,1.3vw,16px)",color:"#6B7280",fontFamily:NUM}}>Meta: {fmtBRL(goals.teamGoal)}</span></div></div>}
     </div>;
 
-    return<><PresentationView panelMap={pm} fsConfig={fsConfig} fsPrimary={fsPrimary} th={th} onExit={onExitPres} teamName={team.name} tc={tc}/>
+    return<><PresentationView panelMap={pm} fsConfig={{...fsConfig,_setConfig:setFsConfig}} fsPrimary={fsPrimary} th={th} onExit={onExitPres} teamName={team.name} tc={tc}/>
       <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:201}}><NewsTicker items={tickerItems} th={th} tc={tc}/></div></>;
   }
 
@@ -1486,7 +1528,7 @@ export default function App(){
         </div>}
         <TeamView team={teams[active]} data={teamsData[active]} metrics={metrics} tc={tc} goals={goals}
           dateRange={dateRange} setDateRange={setDateRange} trans={trans} layout={layout} photos={photos} th={th}
-          presMode={presMode} fsConfig={fsConfig} fsPrimary={fsPrimary} onExitPres={()=>{setPresMode(false);if(document.fullscreenElement)document.exitFullscreen?.();}}
+          presMode={presMode} fsConfig={fsConfig} setFsConfig={setFsConfig} fsPrimary={fsPrimary} onExitPres={()=>{setPresMode(false);if(document.fullscreenElement)document.exitFullscreen?.();}}
           vendorGoals={vendorGoals} setVendorGoals={setVendorGoals} setGoals={setGoals} columns={columns}
           customWidgets={customWidgets} setCustomWidgets={setCustomWidgets}/>
       </div>
