@@ -1112,6 +1112,39 @@ function TeamView({team,data,metrics,tc,goals,setGoals,dateRange,setDateRange,tr
     if(monthly.length>0)pm.wave=<UniversalChart type="wave" data={monthly} color={tc.p} th={darkTh} height={CH}/>;
     if(crossCompData.data.length>0)pm.crossComp=<UniversalChart type={getType("crossComp","bar")} data={crossCompData.data} color={PAL[7]} th={darkTh} height={CH} keys={crossCompData.keys}/>;
 
+    // Rankings for presentation (list-based, not charts)
+    const mkRank=(rk,color,max)=>rk.length?<div style={{maxHeight:"100%",overflowY:"auto"}}>{rk.slice(0,max||15).map((r,i)=>{const mc=i===0?"#FFD700":i===1?"#94A3B8":i===2?"#CD7F32":color;
+      return<div key={i} style={{display:"flex",alignItems:"center",gap:"clamp(8px,1.5vw,14px)",padding:"clamp(6px,1vh,12px) 4px",borderBottom:i<rk.length-1?"1px solid #1a1f30":"none"}}>
+        <span style={{width:"clamp(28px,4vw,44px)",height:"clamp(28px,4vw,44px)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:`${mc}20`,color:mc,fontSize:"clamp(12px,2vw,20px)",fontWeight:800,fontFamily:NUM,flexShrink:0}}>{i+1}</span>
+        <VendorAvatar name={r.name} photos={photos} size={40}/>
+        <div style={{flex:1}}><div style={{fontSize:"clamp(13px,1.8vw,20px)",fontWeight:700,color:"#E8ECF4"}}>{r.name}</div>
+          <div style={{fontSize:"clamp(10px,1.2vw,14px)",color:"#6B7280"}}>{r.count} vendas · {r.vidas} vidas</div></div>
+        <div style={{fontSize:"clamp(14px,2.2vw,24px)",fontWeight:800,fontFamily:NUM,color,flexShrink:0}}>{fmtBRL(r.total)}</div></div>;})}</div>
+      :<p style={{color:"#555",textAlign:"center",padding:40,fontSize:16}}>Sem dados</p>;
+    pm.ranking=mkRank(ranking,tc.p,20);
+    pm.mini0=mkRank(rankingMini1,"#F59E0B",10);
+    pm.mini1=mkRank(rankingMini2,"#4F46E5",10);
+
+    // METRICS — BILLBOARD
+    pm.metrics=<div style={{display:"flex",flexWrap:"wrap",gap:"clamp(8px,1.5vw,16px)",alignContent:"center",height:"100%"}}>
+      {computed.map((m,i)=>{const Icon=iconMap[m.icon]||DollarSign;const val=m.format==="currency"?fmtBRL(m.value):fmtN(m.value);
+        return<div key={m.id} style={{flex:"1 1 clamp(200px,28%,350px)",background:`linear-gradient(135deg,${m.color}12,${m.color}06)`,
+          borderRadius:20,padding:"clamp(16px,3vw,32px)",border:`2px solid ${m.color}30`,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,width:6,height:"100%",background:m.color,borderRadius:"20px 0 0 20px"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"clamp(8px,1.5vw,16px)",paddingLeft:8}}>
+            <Icon size={24} color={m.color}/><span style={{color:"#8B93A7",fontSize:"clamp(12px,1.5vw,18px)",fontWeight:600}}>{m.name}</span></div>
+          <div style={{fontSize:"clamp(28px,5vw,56px)",fontWeight:800,color:"#E8ECF4",fontFamily:NUM,paddingLeft:8,letterSpacing:"-1px",lineHeight:1}}>{val}</div>
+        </div>;})}
+      {goalPct!==null&&<div style={{flex:"1 1 100%",background:`linear-gradient(135deg,${tc.p}12,${tc.p}06)`,borderRadius:20,padding:"clamp(16px,2vw,24px)",border:`2px solid ${tc.p}30`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <span style={{fontSize:"clamp(14px,1.5vw,18px)",fontWeight:700,color:"#8B93A7"}}>Meta da Equipe</span>
+          <span style={{fontSize:"clamp(24px,4vw,48px)",fontWeight:800,color:goalPct>=100?"#34D399":tc.p,fontFamily:NUM}}>{goalPct.toFixed(1)}%</span></div>
+        <PBar pct={goalPct} color={goalPct>=100?"#34D399":tc.p} h={12}/>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+          <span style={{fontSize:"clamp(12px,1.3vw,16px)",color:"#6B7280",fontFamily:NUM}}>{fmtBRL(mainVal)}</span>
+          <span style={{fontSize:"clamp(12px,1.3vw,16px)",color:"#6B7280",fontFamily:NUM}}>Meta: {fmtBRL(goals.teamGoal)}</span></div></div>}
+    </div>;
+
     return<><PresentationView panelMap={pm} fsConfig={fsConfig} fsPrimary={fsPrimary} th={th} onExit={onExitPres} teamName={team.name} tc={tc}/>
       <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:201}}><NewsTicker items={tickerItems} th={th} tc={tc}/></div></>;
   }
