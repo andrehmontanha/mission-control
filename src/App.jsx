@@ -265,14 +265,20 @@ function ThemeCustomizer({customColors,setCustomColors,th}){
 
 // ═══ PRESENTATION VIEW — Actual fullscreen renderer ═══
 // Secondary card with internal slideshow
-function SecSlide({ids,panelMap,accent,interval=5}){
+// ═══ PRESENTATION LAYOUT PERSISTENCE ═══
+const PRES_KEY="mc_preslayout_v1";
+const presSave=c=>{try{localStorage.setItem(PRES_KEY,JSON.stringify(c))}catch(e){}};
+const presLoad=()=>{try{const s=localStorage.getItem(PRES_KEY);return s?JSON.parse(s):{}}catch(e){return{}}};
+
+// Slideshow for secondary area
+function SecSlide({ids,panelMap,accent,interval=5,fontSize=12,pad=10}){
   const[idx,setIdx]=useState(0);
   useEffect(()=>{if(ids.length<=1)return;const t=setInterval(()=>setIdx(p=>(p+1)%ids.length),interval*1000);return()=>clearInterval(t);},[ids.length,interval]);
   const id=ids[idx%ids.length];
-  return<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column"}}>
+  return<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",fontSize,padding:pad}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexShrink:0}}>
-      <span style={{fontSize:10,fontWeight:700,color:accent,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM}}>{PANEL_LABELS[id]||id}</span>
-      {ids.length>1&&<div style={{display:"flex",gap:3}}>{ids.map((_,i)=><div key={i} style={{width:i===idx%ids.length?14:4,height:3,borderRadius:2,background:i===idx%ids.length?accent:"#333",transition:"all .3s"}}/>)}</div>}
+      <span style={{fontSize:Math.max(9,fontSize-2),fontWeight:700,color:accent,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM}}>{PANEL_LABELS[id]||id}</span>
+      {ids.length>1&&<div style={{display:"flex",gap:3}}>{ids.map((_,i)=><div key={i} style={{width:i===idx%ids.length?16:5,height:3,borderRadius:2,background:i===idx%ids.length?accent:"#333",transition:"all .3s"}}/>)}</div>}
     </div>
     <div style={{flex:1,minHeight:0,overflow:"auto"}}>{panelMap[id]||<span style={{color:"#444"}}>—</span>}</div>
   </div>;
@@ -281,14 +287,12 @@ function SecSlide({ids,panelMap,accent,interval=5}){
 function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
   const panels=fsConfig.panels||[];
   const[showEditor,setShowEditor]=useState(false);
-  const[secPct,setSecPct]=useState(fsConfig.secSize||25);
-  const[blockGap,setBlockGap]=useState(fsConfig.gap||6);
-  const[secFontSize,setSecFontSize]=useState(fsConfig.secFont||12);
-  const[secPad,setSecPad]=useState(fsConfig.secPad||10);
-  const[secSlideTime,setSecSlideTime]=useState(fsConfig.secSlide||5);
-  const[secMode,setSecMode]=useState(fsConfig.secMode||"all"); // "all" or "slide"
-  const[secCols,setSecCols]=useState(fsConfig.secCols||0); // 0=auto
+  const[editId,setEditId]=useState(null); // which panel is being edited
+  const[L,setL]=useState(()=>({...{secPct:25,gap:6,secMode:"all",secSlide:5,secCols:0,sidePos:fsConfig.sidePos||"bottom"},...presLoad()}));
   const accent=tc?.p||th.primary;
+  const updL=p=>{const n={...L,...p};setL(n);presSave(n);};
+  const getP=(id)=>L[id]||{};
+  const updP=(id,p)=>updL({[id]:{...getP(id),...p}});
 
   if(!panels.length)return<div style={{position:"fixed",inset:0,zIndex:200,background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div style={{textAlign:"center"}}><p style={{color:"#888",fontSize:20}}>Nenhum painel selecionado</p>
@@ -296,77 +300,72 @@ function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
 
   const primaryId=panels[fsPrimary%panels.length];
   const secIds=panels.filter((_,i)=>i!==(fsPrimary%panels.length));
-  const pos=fsConfig.sidePos||"bottom";
+  const pos=L.sidePos||"bottom";
   const isH=pos==="top"||pos==="bottom";
   const flexDir=pos==="top"?"column-reverse":pos==="bottom"?"column":pos==="left"?"row-reverse":"row";
+  const primCfg=getP(primaryId);
+  const sel={padding:"3px 6px",borderRadius:5,border:"1px solid #1a2030",background:"#0a0e18",color:"#E8ECF4",fontSize:10,outline:"none",cursor:"pointer",fontFamily:NUM};
 
-  return<div style={{position:"fixed",inset:0,zIndex:200,background:"#050810",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:FONT,fontSize:secFontSize}}>
+  return<div style={{position:"fixed",inset:0,zIndex:200,background:"#050810",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:FONT}}>
     {/* Header */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px",background:"rgba(10,14,24,0.95)",borderBottom:`2px solid ${accent}33`,flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:10,height:10,borderRadius:"50%",background:accent,boxShadow:`0 0 12px ${accent}`,animation:"pulse 2s ease-in-out infinite"}}/>
-        <span style={{fontSize:18,fontWeight:800,color:"#fff"}}>{teamName}</span>
-        <span style={{fontSize:10,color:accent,fontFamily:NUM,background:`${accent}15`,padding:"2px 8px",borderRadius:5,fontWeight:600}}>AO VIVO</span>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 16px",background:"rgba(10,14,24,0.95)",borderBottom:"2px solid "+accent+"33",flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:10,height:10,borderRadius:"50%",background:accent,boxShadow:"0 0 12px "+accent,animation:"pulse 2s ease-in-out infinite"}}/>
+        <span style={{fontSize:16,fontWeight:800,color:"#fff"}}>{teamName}</span>
+        <span style={{fontSize:9,color:accent,fontFamily:NUM,background:accent+"15",padding:"2px 6px",borderRadius:4,fontWeight:600}}>AO VIVO</span>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
         <LiveClock th={{...th,primary:accent,text:"#fff",textDim:"#555"}}/>
-        <button onClick={()=>setShowEditor(!showEditor)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${showEditor?"#4F46E5":"#333"}`,background:showEditor?"#4F46E522":"#111",cursor:"pointer",color:showEditor?"#818CF8":"#666",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-          <Sliders size={10}/> Layout</button>
-        <button onClick={onExit} style={{padding:"5px 14px",borderRadius:7,border:"1px solid #333",background:"#111",cursor:"pointer",color:"#888",fontSize:10,fontWeight:600}}>✕ Sair</button>
+        <button onClick={()=>{setShowEditor(!showEditor);setEditId(null)}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+(showEditor?"#4F46E5":"#333"),background:showEditor?"#4F46E522":"#111",cursor:"pointer",color:showEditor?"#818CF8":"#666",fontSize:9,fontWeight:600,display:"flex",alignItems:"center",gap:3}}>
+          <Sliders size={10}/> Editor</button>
+        <button onClick={onExit} style={{padding:"4px 12px",borderRadius:6,border:"1px solid #333",background:"#111",cursor:"pointer",color:"#888",fontSize:9,fontWeight:600}}>✕</button>
       </div>
     </div>
 
-    {/* Editor bar */}
-    {showEditor&&<div style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px",background:"#0d1220",borderBottom:"1px solid #1a2030",flexShrink:0,flexWrap:"wrap"}}>
-      <div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Tam. secundários</span>
-        <input type="range" min={10} max={50} value={secPct} onChange={e=>setSecPct(Number(e.target.value))} style={{width:80,accentColor:accent}}/>
-        <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM,minWidth:24}}>{secPct}%</span>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Espaço</span>
-        <input type="range" min={0} max={20} value={blockGap} onChange={e=>setBlockGap(Number(e.target.value))} style={{width:60,accentColor:accent}}/>
-        <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{blockGap}px</span>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Fonte</span>
-        <input type="range" min={8} max={20} value={secFontSize} onChange={e=>setSecFontSize(Number(e.target.value))} style={{width:60,accentColor:accent}}/>
-        <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{secFontSize}px</span>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Padding</span>
-        <input type="range" min={4} max={24} value={secPad} onChange={e=>setSecPad(Number(e.target.value))} style={{width:60,accentColor:accent}}/>
-        <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{secPad}px</span>
-      </div>
-      <div style={{display:"flex",gap:3}}>
+    {/* Editor sidebar */}
+    {showEditor&&<div style={{position:"absolute",top:38,right:0,width:260,bottom:0,background:"#0a0e18ee",borderLeft:"1px solid #1a2030",zIndex:10,padding:12,overflowY:"auto",backdropFilter:"blur(8px)"}}>
+      <h4 style={{fontSize:11,fontWeight:700,color:"#E8ECF4",marginBottom:8}}>Layout Global</h4>
+      {[["secPct","Tam. secundários (%)",10,50],["gap","Espaçamento (px)",0,20]].map(([k,l,mn,mx])=>
+        <div key={k} style={{marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:8,color:"#6B7280"}}>{l}</span><span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{L[k]}</span></div>
+          <input type="range" min={mn} max={mx} value={L[k]||mn} onChange={e=>updL({[k]:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/></div>)}
+      <div style={{display:"flex",gap:3,marginBottom:8}}>
         {[["bottom","↓"],["top","↑"],["left","←"],["right","→"]].map(([v,l])=>
-          <button key={v} onClick={()=>{if(fsConfig._setConfig)fsConfig._setConfig({...fsConfig,sidePos:v})}} style={{padding:"3px 7px",borderRadius:5,
-            border:`1px solid ${pos===v?"#4F46E566":"#1a2030"}`,background:pos===v?"#4F46E522":"transparent",
-            color:pos===v?"#818CF8":"#555",fontSize:10,cursor:"pointer",fontWeight:600}}>{l}</button>)}
+          <button key={v} onClick={()=>updL({sidePos:v})} style={{flex:1,padding:"4px",borderRadius:4,border:"1px solid "+(pos===v?"#4F46E566":"#1a2030"),background:pos===v?"#4F46E522":"transparent",color:pos===v?"#818CF8":"#555",fontSize:10,cursor:"pointer",fontWeight:600}}>{l}</button>)}
       </div>
-      <div style={{borderLeft:"1px solid #1a2030",paddingLeft:8,display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Modo</span>
-        {[["all","Todos"],["slide","Slideshow"]].map(([v,l])=>
-          <button key={v} onClick={()=>setSecMode(v)} style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${secMode===v?"#4F46E566":"#1a2030"}`,background:secMode===v?"#4F46E522":"transparent",
-            color:secMode===v?"#818CF8":"#555",fontSize:9,cursor:"pointer",fontWeight:600}}>{l}</button>)}
+      <div style={{display:"flex",gap:3,marginBottom:10}}>
+        {[["all","Todos"],["slide","Slide"]].map(([v,l])=>
+          <button key={v} onClick={()=>updL({secMode:v})} style={{flex:1,padding:"4px",borderRadius:4,border:"1px solid "+(L.secMode===v?"#4F46E566":"#1a2030"),background:L.secMode===v?"#4F46E522":"transparent",color:L.secMode===v?"#818CF8":"#555",fontSize:9,cursor:"pointer",fontWeight:600}}>{l}</button>)}
       </div>
-      {secMode==="slide"&&<div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Intervalo</span>
-        <input type="range" min={2} max={15} value={secSlideTime} onChange={e=>setSecSlideTime(Number(e.target.value))} style={{width:60,accentColor:accent}}/>
-        <span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{secSlideTime}s</span>
-      </div>}
-      {secMode==="all"&&<div style={{display:"flex",alignItems:"center",gap:4}}>
-        <span style={{fontSize:8,color:"#6B7280",fontWeight:600}}>Colunas</span>
-        {[0,1,2,3].map(v=><button key={v} onClick={()=>setSecCols(v)} style={{padding:"2px 6px",borderRadius:4,border:`1px solid ${secCols===v?"#4F46E566":"#1a2030"}`,background:secCols===v?"#4F46E522":"transparent",
-          color:secCols===v?"#818CF8":"#555",fontSize:9,cursor:"pointer"}}>{v===0?"Auto":v}</button>)}
-      </div>}
+      {L.secMode==="slide"&&<div style={{marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:8,color:"#6B7280"}}>Intervalo slide (s)</span><span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{L.secSlide||5}</span></div>
+        <input type="range" min={2} max={15} value={L.secSlide||5} onChange={e=>updL({secSlide:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/></div>}
+
+      <div style={{borderTop:"1px solid #1a2030",paddingTop:10,marginTop:6}}>
+        <h4 style={{fontSize:11,fontWeight:700,color:"#E8ECF4",marginBottom:8}}>Painel Individual</h4>
+        <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:8}}>
+          {panels.map(id=><button key={id} onClick={()=>setEditId(editId===id?null:id)} style={{padding:"3px 6px",borderRadius:4,fontSize:8,fontWeight:editId===id?700:400,
+            border:"1px solid "+(editId===id?"#4F46E5":"#1a2030"),background:editId===id?"#4F46E522":"transparent",color:editId===id?"#818CF8":"#6B7280",cursor:"pointer"}}>
+            {id===primaryId?"★ ":""}{(PANEL_LABELS[id]||id).slice(0,12)}</button>)}
+        </div>
+        {editId&&<div style={{background:"#0d1220",borderRadius:8,padding:10,border:"1px solid #1a2030"}}>
+          <span style={{fontSize:9,fontWeight:700,color:accent,display:"block",marginBottom:6}}>{PANEL_LABELS[editId]||editId}</span>
+          {[["fs","Fonte",8,36],["pad","Padding",0,40],["rad","Borda",0,24],["minH","Altura mín.",0,500]].map(([k,l,mn,mx])=>{
+            const v=getP(editId)[k]||(k==="fs"?14:k==="pad"?12:k==="rad"?10:0);
+            return<div key={k} style={{marginBottom:6}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:8,color:"#6B7280"}}>{l}</span><span style={{fontSize:9,color:"#E8ECF4",fontFamily:NUM}}>{v}{k==="minH"&&v===0?"(auto)":"px"}</span></div>
+              <input type="range" min={mn} max={mx} value={v} onChange={e=>updP(editId,{[k]:Number(e.target.value)})} style={{width:"100%",accentColor:accent}}/></div>;})}
+        </div>}
+      </div>
     </div>}
 
     {/* Content */}
-    <div style={{flex:1,display:"flex",flexDirection:flexDir,gap:blockGap,padding:blockGap,overflow:"hidden"}}>
+    <div style={{flex:1,display:"flex",flexDirection:flexDir,gap:L.gap,padding:L.gap,overflow:"hidden",marginRight:showEditor?260:0,transition:"margin .3s"}}>
       {/* PRIMARY */}
-      <div key={primaryId} style={{flex:1,minWidth:0,minHeight:0,background:"linear-gradient(180deg,#0a0e18,#0d1220)",borderRadius:16,padding:20,overflow:"auto",
-        border:`2px solid ${accent}30`,boxShadow:`0 0 60px ${accent}10`,display:"flex",flexDirection:"column"}}>
+      <div key={primaryId} style={{flex:1,minWidth:0,minHeight:0,background:"linear-gradient(180deg,#0a0e18,#0d1220)",
+        borderRadius:primCfg.rad||16,padding:primCfg.pad||20,overflow:"auto",fontSize:primCfg.fs||16,
+        border:"2px solid "+accent+"30",boxShadow:"0 0 60px "+accent+"10",display:"flex",flexDirection:"column",
+        minHeight:primCfg.minH||0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexShrink:0}}>
           <div style={{width:4,height:20,borderRadius:2,background:accent}}/>
           <span style={{fontSize:"clamp(14px,2vw,22px)",fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:2,fontFamily:NUM}}>
@@ -378,29 +377,29 @@ function PresentationView({panelMap,fsConfig,fsPrimary,th,onExit,teamName,tc}){
       </div>
 
       {/* SECONDARIES */}
-      {secIds.length>0&&(secMode==="slide"
-        ?<div style={{flex:`0 0 ${isH?secPct+"vh":secPct+"vw"}`,background:"#0a0e18",borderRadius:10,padding:secPad,border:"1px solid #1a1f30",overflow:"hidden",fontSize:secFontSize}}>
-          <SecSlide ids={secIds} panelMap={panelMap} accent={accent} interval={secSlideTime}/>
+      {secIds.length>0&&(L.secMode==="slide"
+        ?<div style={{flex:"0 0 "+(isH?L.secPct+"vh":L.secPct+"vw"),background:"#0a0e18",borderRadius:10,overflow:"hidden",border:"1px solid #1a1f30"}}>
+          <SecSlide ids={secIds} panelMap={panelMap} accent={accent} interval={L.secSlide||5}/>
         </div>
-        :<div style={{flex:`0 0 ${isH?secPct+"vh":secPct+"vw"}`,display:"flex",flexDirection:isH?"row":"column",gap:blockGap,overflow:"auto",
-          flexWrap:secCols>0?"wrap":"nowrap"}}>
-          {secIds.map(id=><div key={id} style={{
-            flex:secCols>0?`0 0 calc(${100/secCols}% - ${blockGap}px)`:"1 1 0",
-            minWidth:0,minHeight:isH?0:60,background:"#0a0e18",borderRadius:10,padding:secPad,overflow:"auto",border:"1px solid #1a1f30",fontSize:secFontSize}}>
-            <div style={{fontSize:Math.max(8,secFontSize-3),fontWeight:700,color:accent,marginBottom:4,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM,flexShrink:0}}>{PANEL_LABELS[id]||id}</div>
+        :<div style={{flex:"0 0 "+(isH?L.secPct+"vh":L.secPct+"vw"),display:"flex",flexDirection:isH?"row":"column",gap:L.gap,overflow:"auto"}}>
+          {secIds.map(id=>{const c=getP(id);return<div key={id} style={{
+            flex:"1 1 0",minWidth:0,minHeight:c.minH||0,background:"#0a0e18",
+            borderRadius:c.rad||10,padding:c.pad||10,overflow:"auto",border:"1px solid #1a1f30",fontSize:c.fs||12}}>
+            <div style={{fontSize:Math.max(8,(c.fs||12)-2),fontWeight:700,color:accent,marginBottom:4,textTransform:"uppercase",letterSpacing:1,fontFamily:NUM,flexShrink:0}}>{PANEL_LABELS[id]||id}</div>
             <div style={{minHeight:0}}>{panelMap[id]}</div>
-          </div>)}
+          </div>;})}
         </div>
       )}
     </div>
 
     {/* Indicators */}
-    {panels.length>1&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"5px 0",background:"rgba(5,8,16,0.95)",flexShrink:0}}>
+    {panels.length>1&&<div style={{display:"flex",justifyContent:"center",gap:6,padding:"5px 0",background:"rgba(5,8,16,0.95)",flexShrink:0,marginRight:showEditor?260:0}}>
       {panels.map((id,i)=><div key={id} style={{width:i===(fsPrimary%panels.length)?36:6,height:4,borderRadius:2,
-        background:i===(fsPrimary%panels.length)?accent:"#333",transition:"all .5s",boxShadow:i===(fsPrimary%panels.length)?`0 0 8px ${accent}60`:"none"}}/>)}
+        background:i===(fsPrimary%panels.length)?accent:"#333",transition:"all .5s",boxShadow:i===(fsPrimary%panels.length)?"0 0 8px "+accent+"60":"none"}}/>)}
     </div>}
   </div>;
 }
+
 
 // ═══ TOAST (original) ═══
 function Toast({items,th}){if(!items.length)return null;
